@@ -63,8 +63,45 @@ def process_keys_request(data):
 
 
 def process_fields_request(data):
-    return
+    filename = ""
+    fieldname = ""
 
+    for header in data:
+        key_value = header.split(":", 1)
+        if len(key_value) == 2:
+            key = key_value[0].strip()
+            value = key_value[1].strip()
+
+            if key == "Key":
+                if any(c in value for c in (' ', ':', '/')):
+                    return "300 Bad request\n"
+                else:
+                    filename = value + ".yaml"
+            else:
+                return "300 Bad request\n"
+        else:
+            return "300 Bad request\n"
+
+    if filename:
+        file_found = filename in os.listdir('data')
+        if file_found:
+            file_path = os.path.join('data', filename)
+            try:
+                with open(file_path, mode='r') as f:
+                    dict = yaml.safe_load(f)
+                    keys = list(dict)
+                    string = yaml.safe_dump(keys)
+                    size = len(string.encode('utf-8'))
+                    response = f"100 OK\nContent-length: {size}\n{string}"
+                    return response
+            except OSError:
+                return "201 Read error\n"
+            except yaml.error.YAMLError:
+                return "202 File format error\n"
+        else:
+            return "200 No such key\n"
+    else:
+        return "200 No such key\n"
 
 def process_request(data):
     lines = data.splitlines()
