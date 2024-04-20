@@ -101,25 +101,30 @@ def method_GET(request,stack):
              return Response(STATUS_BAD_REQUEST)
     if filename:
 
-        if os.path.exists('data') and os.path.isdir('data'):
-            file_found = filename in os.listdir('data')
-            if file_found:
-                file_path = os.path.join('data', filename)
+        if not os.path.exists('data') or not os.path.isdir('data'):
+            return Response(STATUS_BAD_REQUEST)
+
+        file_path = os.path.join('data', filename)
+    
+        try:
+            with open(file_path, mode='r') as f:
                 try:
-                    with open(file_path, mode='r') as f:
-                        dict = yaml.safe_load(f)
-                        if fieldname in dict:
-                            return Response(STATUS_OK,dict[fieldname])        
-                        else:
-                            return Response(STATUS_NO_FIELD)
-                except OSError:
-                    return Response(STATUS_READ_ERROR)
+                    dict_data = yaml.safe_load(f)
                 except yaml.error.YAMLError:
                     return Response(STATUS_FORMAT_ERROR)
-            else:
-                return Response(STATUS_NO_KEY)
-        else:
-            return Response(STATUS_BAD_REQUEST)
+                except OSError:
+                    return Response(STATUS_READ_ERROR)
+
+                if fieldname in dict_data:
+                    return Response(STATUS_OK, dict_data[fieldname])
+                else:
+                    return Response(STATUS_NO_FIELD)
+
+        except FileNotFoundError:
+            return Response(STATUS_NO_KEY)
+
+        except OSError:
+            return Response(STATUS_READ_ERROR)
     else:
         return Response(STATUS_BAD_REQUEST)
 
