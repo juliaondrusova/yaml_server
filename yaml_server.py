@@ -56,7 +56,7 @@ class Response:
 
     def send(self,f):
         f.write(f'{self.status[0]} {self.status[1]}\n'.encode('utf-8'))
-        if self.status[0] == 100:
+        if self.status == STATUS_OK:
             if self.content:
                 response_content = yaml.dump(self.content)
                 size = len(response_content.encode('utf-8'))
