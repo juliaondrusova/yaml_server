@@ -4,6 +4,9 @@ import logging
 import os
 import yaml
 
+logging.basicConfig(level=logging.DEBUG)
+
+
 class BadRequest(Exception):
     pass
 
@@ -15,74 +18,13 @@ class ErrorResponse(Exception):
         self.response = response
 
 
-class YamlObject(dict):
-    def load(self, key, lock):
-        if not key:
-            raise ErrorResponse(Response(STATUS_BAD_REQUEST))
-
-        filename = f"{key}.yaml"
-        file_path = os.path.join('data', filename)
-
-        if not os.path.exists(file_path):
-            raise ErrorResponse(Response(STATUS_NO_KEY))
-
-        with lock:
-            try:
-                with open(file_path, mode='r', encoding = "utf-8") as f:
-                    try:
-                        dict_data = yaml.safe_load(f)
-                    except yaml.error.YAMLError:
-                        raise ErrorResponse(Response(STATUS_FORMAT_ERROR))
-
-                    self.clear()
-                    self.update(dict_data)
-                    return self
-            except OSError:
-                raise ErrorResponse(Response(STATUS_READ_ERROR))
-
-    def save(self, key, lock):
-        if not key:
-            raise ErrorResponse(Response(STATUS_BAD_REQUEST))
-
-        filename = f"{key}.yaml"
-        file_path = os.path.join('data', filename)
-        with lock:
-            try:
-                # Validate YAML formatting before writing to the file
-                yaml_data = yaml.dump(dict(self), default_flow_style=False)
-                yaml.safe_load(yaml_data)  # Attempt to load YAML data
-            except yaml.YAMLError as e:
-                raise ErrorResponse(Response(STATUS_YAML_ERROR))
-
-            try:
-                with open(file_path, mode='w', encoding="utf-8") as f:
-                    f.write(yaml_data)
-            except IOError:
-                logging.error("WRITE ERROR")
-                raise ErrorResponse(Response(STATUS_WRITE_ERROR))
-
-
-STATUS_OK=(100,'OK')
-STATUS_READ_ERROR=(201,'Read error')
-STATUS_FORMAT_ERROR=(202,'File format error')
-STATUS_NO_KEY=(200,'No such key')
-STATUS_UKNOWN_METHOD=(203,'Unkown method')
-STATUS_NO_FIELD = (204, 'No such field')
-STATUS_WRITE_ERROR = (205, 'Write error')
-STATUS_YAML_ERROR = (206, 'YAML error')
-STATUS_NOT_A_MAPPING = (207, 'Not a mapping')
-STATUS_BAD_REQUEST=(300,'Bad request')
-
-
-logging.basicConfig(level=logging.DEBUG)
-
 class Request:
 
     def __init__(self, f):
 
         lines = []
         lenght = 0
-        contentLengthFound = False  # Track if content length was found in the previous line
+        contentLengthFound = False
         enterCounter = 0
         while True:
 
@@ -118,12 +60,11 @@ class Request:
             logging.debug(f'Client sent {line}')
             lines.append(line)
                 
-        if not lines:  # If nothing was sent
+        if not lines:
             raise BadRequest
         
         self.method = lines[0]
         self.content = lines[1:]
-
 
         
 class Response:
@@ -151,6 +92,57 @@ class Response:
         return f'''Response(
             {self.status[0]} {self.status[1]},
             {self.content})'''
+
+
+class YamlObject(dict):
+    def load(self, key, lock):
+        if not key:
+            raise ErrorResponse(Response(STATUS_BAD_REQUEST))
+
+        filename = f"{key}.yaml"
+        file_path = os.path.join('data', filename)
+
+        if not os.path.exists(file_path):
+            raise ErrorResponse(Response(STATUS_NO_KEY))
+
+        with lock:
+            try:
+                with open(file_path, mode='r', encoding = "utf-8") as f:
+                    try:
+                        dict_data = yaml.safe_load(f)
+                    except yaml.error.YAMLError:
+                        raise ErrorResponse(Response(STATUS_FORMAT_ERROR))
+
+                    self.clear()
+                    self.update(dict_data)
+                    return self
+            except OSError:
+                raise ErrorResponse(Response(STATUS_READ_ERROR))
+
+    def save(self, key, lock):
+        if not key:
+            raise ErrorResponse(Response(STATUS_BAD_REQUEST))
+        filename = f"{key}.yaml"
+        file_path = os.path.join('data', filename)
+        with lock:
+            try:
+                with open(file_path, mode='w', encoding="utf-8") as f:
+                    yaml.dump(dict(self), f, default_flow_style=False)            
+            except IOError:
+                logging.error("WRITE ERROR")
+                raise ErrorResponse(Response(STATUS_WRITE_ERROR))
+
+
+STATUS_OK=(100,'OK')
+STATUS_READ_ERROR=(201,'Read error')
+STATUS_FORMAT_ERROR=(202,'File format error')
+STATUS_NO_KEY=(200,'No such key')
+STATUS_UKNOWN_METHOD=(203,'Unkown method')
+STATUS_NO_FIELD = (204, 'No such field')
+STATUS_WRITE_ERROR = (205, 'Write error')
+STATUS_YAML_ERROR = (206, 'YAML error')
+STATUS_NOT_A_MAPPING = (207, 'Not a mapping')
+STATUS_BAD_REQUEST=(300,'Bad request')
 
         
 def method_GET(request, stack, lock):
@@ -276,28 +268,27 @@ def method_PUT(request, stack, lock):
             else:
                 raise ErrorResponse(Response(STATUS_BAD_REQUEST))
         else:
-            if not key_header or not field_header or not content_length_header:
+            if not key_header or not field_header or not content_length_header: #musia byt vsetky tri hlavicky
                 raise ErrorResponse(Response(STATUS_BAD_REQUEST))
            
-            new_data = header
-            try:
-                obj = yaml.safe_load(new_data) 
+            try: #kontrola, ci content je validny ako hodnota do yaml file
+                obj = yaml.safe_load(header)
             except:
                 raise ErrorResponse(Response(STATUS_YAML_ERROR))
             yaml_obj = YamlObject()
-            yaml_obj.load(key_header, lock)  
+            yaml_obj.load(key_header, lock)  #nacitanie suboru
            
             try:
-                yaml_obj[field_header] = obj
+                yaml_obj[field_header] = obj #zmena v zadanom fielde na novu value, ktora prisla ako content
                 yaml_obj.save(key_header, lock)
                 return Response(STATUS_OK)
             
             except ErrorResponse as e:
                 raise ErrorResponse(Response(STATUS_WRITE_ERROR))
 
-    if bolObsah:    
+    if bolObsah: 
         return Response(STATUS_OK)
-    else:
+    else: #za hlavickami ma byt obsah, inak bad request
         raise ErrorResponse(Response(STATUS_BAD_REQUEST))
 
 
@@ -306,7 +297,6 @@ def method_POST(request, stack, lock):
         raise ErrorResponse(Response(STATUS_BAD_REQUEST))
 
     key_header = None
-    field_header = None
     content_length_header = None
     bolObsah = False
 
@@ -334,33 +324,32 @@ def method_POST(request, stack, lock):
             else:
                 raise ErrorResponse(Response(STATUS_BAD_REQUEST))
         else:
-            if not key_header or not content_length_header:
+            if not key_header or not content_length_header: #musia byt obidve hlavicky
                 raise ErrorResponse(Response(STATUS_BAD_REQUEST))
            
-            try:
+            try: #konvertovanie  ak sa to neda, tak zly yaml format
                 obj = yaml.safe_load(header) 
             except:
                 raise ErrorResponse(Response(STATUS_YAML_ERROR))
-            if not isinstance(obj,dict):
+            if not isinstance(obj,dict): #ak zkonvertovany obj nema typ dict, tak mapping error
                 raise ErrorResponse(Response(STATUS_NOT_A_MAPPING))
             
             filename = f"{key_header}.yaml"
             file_path = os.path.join('data', filename)
             with lock:
-                yaml_data = yaml.dump(dict(obj), default_flow_style=False)
+                yaml_data = yaml.dump(dict(obj), default_flow_style=False) #konvertovanie na retazec
                 try:
                     with open(file_path, mode='w', encoding="utf-8") as f:
                         f.write(yaml_data)
                 except IOError:
-                    logging.error("WRITE ERROR")
                     raise ErrorResponse(Response(STATUS_WRITE_ERROR))
             
                 except ErrorResponse as e:
                     raise ErrorResponse(Response(STATUS_WRITE_ERROR))
 
-    if bolObsah:    
+    if bolObsah:
         return Response(STATUS_OK)
-    else:
+    else: #za hlavickami musi byt obsah, inak bad request
         raise ErrorResponse(Response(STATUS_BAD_REQUEST))
 
 METHODS={
@@ -389,10 +378,8 @@ def handle_client(client_socket, addr, lock):
             try:
                 if req.method in METHODS:
                     
-                    #METHODS[req.method](req, stack, lock)
-                    response = (METHODS[req.method](req, stack, lock))
-                    logging.info(response)
-                    response.send(f)
+                    METHODS[req.method](req, stack, lock).send(f)
+                   
                 else:
                     raise ErrorResponse(Response(STATUS_UKNOWN_METHOD))
             except ErrorResponse as exc:
@@ -400,7 +387,6 @@ def handle_client(client_socket, addr, lock):
         logging.info(f'handle_client {addr} stop')
     except KeyboardInterrupt:
         client_socket.close()
-    '''client_socket.close()'''
 
 
 s=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
