@@ -70,21 +70,20 @@ class Request:
 class Response:
 
     def __init__(self,status,content=[]):
-
+   
         self.status=status
         self.content=content
 
+
     def send(self,f):
         f.write(f'{self.status[0]} {self.status[1]}\n'.encode('utf-8'))
-        if self.status == STATUS_OK:
-            if self.content:
-                response_content = yaml.dump(self.content)
-                size = len(response_content.encode('utf-8'))
-                f.write(f"Content-length: {size}\n".encode('utf-8') + '\n'.encode('utf-8') + response_content.encode('utf-8'))
-            else:
-                f.write('\n'.encode('utf-8'))
+        if self.content or self.content == 0:
+            response_content = yaml.dump(self.content)
+            size = len(response_content.encode('utf-8'))
+            f.write(f"Content-length: {size}\n".encode('utf-8') + '\n'.encode('utf-8') + response_content.encode('utf-8'))
         else:
-            f.write('\n'.encode('utf-8'))   
+            f.write('\n'.encode('utf-8'))
+        
         f.flush()
 
     def __repr__(self):
@@ -180,6 +179,7 @@ def method_GET(request, stack, lock):
         dict_data = yaml_obj.load(filename, lock)
 
         if fieldname in dict_data:
+            logging.info(f"DICT DATA: {dict_data[fieldname]}")
             return Response(STATUS_OK, dict_data[fieldname])
         else:
             raise ErrorResponse(Response(STATUS_NO_FIELD))
